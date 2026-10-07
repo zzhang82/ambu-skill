@@ -129,6 +129,27 @@ class SkillAuditHardeningTests(unittest.TestCase):
             self.assertEqual(got["status"], "completed")
             self.assertEqual(got["sessions"], [])
 
+    def test_nonzero_attempt_without_binding_does_not_claim_foreign_usage(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            db = tmp / "opencode.db"
+            make_test_db(db, [("foreign_session", "/workspace/A", 101000, 102000)])
+            runs_dir = tmp / "runs" / "unbound-task"
+            runs_dir.mkdir(parents=True)
+            meta = {
+                "task_id": "unbound-task",
+                "mode": "iterate",
+                "status": "failed",
+                "cwd": "/workspace/A",
+                "rounds": 1,
+                "started_at": "1970-01-01T00:01:40Z",
+                "ended_at": "1970-01-01T00:01:42Z",
+                "final_check_passed": False,
+            }
+            (runs_dir / "metadata.json").write_text(json.dumps(meta), encoding="utf-8")
+            got = ambu_telemetry.extract_telemetry("unbound-task", state_home=tmp, db_path=db)
+            self.assertEqual(got["sessions"], [])
+
 
 if __name__ == "__main__":
     unittest.main()
