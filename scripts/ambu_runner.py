@@ -73,12 +73,24 @@ def parse_milestone(line: str) -> str | None:
 
 def extract_task_id_from_stream(text: str) -> str | None:
     """Extract 2026xxxx-xxxxxx-xxxx-xxxx task id from output."""
-    m = re.search(r'"task_id":\s*"([0-9]{8}-[0-9]{6}-[a-zA-Z0-9_-]+)"', text)
-    if m:
-        return m.group(1)
-    m = re.search(r'\b([0-9]{8}-[0-9]{6}-[a-zA-Z0-9_-]+)\b', text)
-    if m:
-        return m.group(1)
+    if not text:
+        return None
+    # 1. Prefer structured JSON output: {"task_id": "..."}
+    json_matches = re.findall(r'"task_id":\s*"([0-9]{8}-[0-9]{6}-[a-zA-Z0-9_-]+)"', text)
+    if json_matches:
+        return json_matches[-1]
+    # 2. Look for "Starting task <id>"
+    starting = re.findall(r'Starting task\s+([0-9]{8}-[0-9]{6}-[a-zA-Z0-9_-]+)', text)
+    if starting:
+        return starting[-1]
+    # 3. Look for "Task <id> finished"
+    finished = re.findall(r'Task\s+([0-9]{8}-[0-9]{6}-[a-zA-Z0-9_-]+)\s+finished', text)
+    if finished:
+        return finished[-1]
+    # 4. Fallback to any task id token, taking the last one seen
+    tokens = re.findall(r'\b([0-9]{8}-[0-9]{6}-[a-zA-Z0-9_-]+)\b', text)
+    if tokens:
+        return tokens[-1]
     return None
 
 
@@ -104,9 +116,9 @@ def run_supervised(cmd: list[str], json_only: bool = False) -> tuple[int, str, s
             if proc.stdout:
                 for line in proc.stdout:
                     stdout_lines.append(line)
-                    if not task_id:
-                        found_id = extract_task_id_from_stream(line)
-                        if found_id:
+                    found_id = extract_task_id_from_stream(line)
+                    if found_id:
+                        if '"task_id":' in line or "Starting task" in line or not task_id:
                             task_id = found_id
                     milestone = parse_milestone(line)
                     if milestone:
@@ -135,8 +147,9 @@ def run_supervised(cmd: list[str], json_only: bool = False) -> tuple[int, str, s
     t.join(timeout=2.0)
 
     full_stdout = "".join(stdout_lines)
-    if not task_id:
-        task_id = extract_task_id_from_stream(full_stdout)
+    final_id = extract_task_id_from_stream(full_stdout)
+    if final_id:
+        task_id = final_id
 
     return proc.returncode, full_stdout, task_id
 

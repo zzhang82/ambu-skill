@@ -7,6 +7,7 @@ tool call breakdown, and loop counts from agentctl run artifacts and opencode.db
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import time
 from datetime import datetime
@@ -14,8 +15,8 @@ from pathlib import Path
 from typing import Any
 
 
-DEFAULT_STATE_HOME = Path.home() / ".local" / "share" / "runtime-agents"
-DEFAULT_OPENCODE_DB = Path.home() / ".local" / "share" / "opencode" / "opencode.db"
+DEFAULT_STATE_HOME = Path(os.environ.get("RUNTIME_AGENTS_STATE_HOME") or (Path.home() / ".local" / "share" / "runtime-agents"))
+DEFAULT_OPENCODE_DB = Path(os.environ.get("OPENCODE_DB_PATH") or (Path.home() / ".local" / "share" / "opencode" / "opencode.db"))
 
 
 def parse_iso_to_epoch_ms(iso_str: str | None) -> int | None:
@@ -88,20 +89,69 @@ def query_opencode_sessions(
         cur.execute(sql, params)
         rows = cur.fetchall()
 
-        # If directory filter was used but found nothing, fallback to time window
-        if not rows and directory:
-            fallback_sql = """
-                SELECT id, directory, agent, model, cost,
-                       tokens_input, tokens_output, tokens_reasoning,
-                       tokens_cache_read, tokens_cache_write,
-                       time_created, time_updated
-                FROM session
-                WHERE time_created >= ? AND time_created <= ?
-                ORDER BY time_created ASC
-            """
-            cur.execute(fallback_sql, [query_start, query_end])
-            rows = cur.fetchall()
+        sessions = []
+        for r in rows:
+            model_info = r[3]
+            model_id = "unknown"
+            variant = None
+            if model_info:
+                try:
+                    m = json.loads(model_info) if isinstance(model_info, str) else model_info
+                    prov = m.get("providerID", "local")
+                    mid = m.get("id", "unknown")
+                    model_id = f"{prov}/{mid}" if prov != "local" or "/" not in mid else mid
+                    if prov == "local" and not model_id.startswith("local/"):
+                        model_id = f"local/{mid}"
+                    variant = m.get("variant")
+                except Exception:
+                    model_id = str(model_info)
 
+            sessions.append({
+                "session_id": r[0],
+                "directory": r[1],
+                "agent": r[2],
+                "model": model_id,
+                "variant": variant,
+                "cost": r[4] or 0.0,
+                "tokens_input": r[5] or 0,
+                "tokens_output": r[6] or 0,
+                "tokens_reasoning": r[7] or 0,
+                "tokens_cache_read": r[8] or 0,
+                "tokens_cache_write": r[9] or 0,
+                "time_created": r[10],
+                "time_updated": r[11],
+            })
+        return sessions
+    finally:
+        conn.close()
+
+
+def query_opencode_sessions_by_ids(
+    session_ids: list[str],
+    db_path: Path | None = None,
+) -> list[dict[str, Any]]:
+    """Query sessions from OpenCode SQLite DB by exact session IDs."""
+    if not session_ids:
+        return []
+    db = db_path or DEFAULT_OPENCODE_DB
+    if not db.is_file():
+        return []
+
+    conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    try:
+        cur = conn.cursor()
+        placeholders = ",".join(["?"] * len(session_ids))
+        sql = f"""
+            SELECT id, directory, agent, model, cost,
+                   tokens_input, tokens_output, tokens_reasoning,
+                   tokens_cache_read, tokens_cache_write,
+                   time_created, time_updated
+            FROM session
+            WHERE id IN ({placeholders})
+            ORDER BY time_created ASC
+        """
+        cur.execute(sql, session_ids)
+        rows = cur.fetchall()
         sessions = []
         for r in rows:
             model_info = r[3]
@@ -166,6 +216,8 @@ def query_tools_used_for_sessions(
             session_ids,
         )
         return {row[0]: row[1] for row in cur.fetchall() if row[0]}
+    except sqlite3.OperationalError:
+        return {}
     finally:
         conn.close()
 
@@ -191,7 +243,17 @@ def extract_telemetry(
         duration = round((time.time() * 1000 - start_ms) / 1000.0, 2)
 
     sessions = []
-    if start_ms:
+    direct_session_ids: list[str] = []
+    if meta.get("session_id"):
+        direct_session_ids.append(meta["session_id"])
+    if meta.get("sessions") and isinstance(meta["sessions"], list):
+        for s in meta["sessions"]:
+            if s and s not in direct_session_ids:
+                direct_session_ids.append(s)
+
+    if direct_session_ids:
+        sessions = query_opencode_sessions_by_ids(direct_session_ids, db_path=db_path)
+    elif start_ms:
         sessions = query_opencode_sessions(
             start_ms=start_ms,
             end_ms=end_ms,

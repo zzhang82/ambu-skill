@@ -5,8 +5,8 @@ version: 1.0.0
 author: Ambu Team
 license: MIT
 metadata:
-  tags: [agentctl, supervisor, orchestration, telemetry, tokens, background-runner]
-  related_skills: [agent-discipline-overlay, cole-operator, skillops-mentor]
+  tags: "agentctl, supervisor, orchestration, telemetry, tokens, background-runner"
+  related_skills: "agent-discipline-overlay, cole-operator, skillops-mentor"
 ---
 
 # Ambu Supervisor Skill (`ambu`)
@@ -84,11 +84,10 @@ Under the hood, this invokes `opencode run --session <session_id> --fork --model
 
 ---
 
-### 2. Output Telemetry Schema
+### 3. Output Telemetry Schema
 
 Every `ambu_runner.py` execution concludes with the authoritative JSON block:
 
-```json
 ```json
 {
   "task_id": "20261006-222134-iterate-oracle-e33943",
@@ -134,11 +133,10 @@ Every `ambu_runner.py` execution concludes with the authoritative JSON block:
   "gap_classification": null
 }
 ```
-```
 
 ---
 
-### 3. One-Shot Status & Debugging (`ambu_status.py`)
+### 4. One-Shot Status & Debugging (`ambu_status.py`)
 
 When the user asks *"what is currently running?"* or *"is task X done yet?"*:
 

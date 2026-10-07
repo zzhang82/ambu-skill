@@ -17,7 +17,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-STATE_HOME = Path.home() / ".local" / "share" / "runtime-agents"
+STATE_HOME = Path(os.environ.get("RUNTIME_AGENTS_STATE_HOME") or (Path.home() / ".local" / "share" / "runtime-agents"))
 
 
 def read_jsonl(path: Path) -> list[dict[str, Any]]:
