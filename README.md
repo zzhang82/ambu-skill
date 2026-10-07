@@ -1,12 +1,12 @@
 # Ambu Skill (`ambu-skill`)
 
-> **The high-UX supervisor skill and telemetry bridge for OpenCode and Codex coding agents.**
+> **The thin workflow adapter and milestone telemetry bridge for Ambu.**
 
-`ambu-skill` wraps [`ambu-runtime-agents`](https://github.com/zzhang82/ambu-runtime-agents) (`agentctl`) to deliver a smooth developer experience:
-- **No Manual Polling Loops**: Runs tasks under managed process groups and streams real-time milestone events.
-- **Authoritative Token Observability**: Aggregates exact token spend (input, output, reasoning, cache read/write) by model directly from OpenCode's SQLite database.
-- **Anti-Loop Iteration Visibility**: Reports loop counts, gap classifications, tool usage counts, and duration.
-- **One-Shot Status & Cancellation**: Instant PID alive status, log tails, and process group signals without custom scripts.
+`ambu-skill` is a thin workflow adapter for [Ambu](https://github.com/zzhang82/ambu-runtime-agents). It invokes the runtime and presents its execution and verification results:
+- **Supervised Milestone Streaming**: Runs tasks in monitored process groups and streams real-time milestone events.
+- **Attributable Token Observability**: Presents token spend metrics when task sessions are strictly attributable, avoiding guessed allocations.
+- **Iteration Visibility**: Reports loop counts, gap classifications, verification states, and execution duration.
+- **One-Shot Status & Clean Signals**: Fast single-shot task inspection and process group termination without custom scripts.
 
 ---
 

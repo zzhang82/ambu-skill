@@ -1,19 +1,19 @@
 ---
 name: ambu
-description: High-UX supervisor skill for OpenCode and Codex coding agents. Wraps agentctl with automated background execution, clean milestone progress streaming (no polling loops), single-shot task status inspection, and detailed post-run telemetry reporting exact token spend by model, reasoning tokens, cache metrics, and iteration loop counts.
+description: Thin workflow adapter skill for Ambu (agentctl). Provides supervised execution, milestone progress streaming, one-shot status inspection, and token spend telemetry when sessions are attributable.
 version: 1.0.0
 author: Ambu Team
 license: MIT
 metadata:
-  tags: "agentctl, supervisor, orchestration, telemetry, tokens, background-runner"
-  related_skills: "agent-discipline-overlay, cole-operator, skillops-mentor"
+  tags: "agentctl, workflow-adapter, telemetry, progress-streaming"
+  related_skills: "agent-discipline-overlay, cole-operator"
 ---
 
-# Ambu Supervisor Skill (`ambu`)
+# Ambu Skill (`ambu`)
 
-Use this skill whenever delegating tasks to the **Ambu runtime-agents control plane (`agentctl`)**.
+Use this skill whenever delegating tasks to the **Ambu runtime control plane (`agentctl`)**.
 
-It replaces blind terminal waiting and manual, noisy polling loops with **supervised process execution**, **clean milestone progress streaming**, and an **authoritative end-of-run telemetry schema** reporting token spend by model, reasoning tokens, cache hits, tool calls, and loop counts.
+It provides **supervised process execution**, **clean milestone progress streaming**, and an **end-of-run telemetry report** capturing task status, verification outcomes, and token metrics when sessions are attributable.
 
 ---
 

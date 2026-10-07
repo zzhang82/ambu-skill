@@ -87,8 +87,9 @@ def extract_task_id_from_stream(text: str) -> str | None:
     finished = re.findall(r'Task\s+([0-9]{8}-[0-9]{6}-[a-zA-Z0-9_-]+)\s+finished', text)
     if finished:
         return finished[-1]
-    # 4. Fallback to any task id token, taking the last one seen
-    tokens = re.findall(r'\b([0-9]{8}-[0-9]{6}-[a-zA-Z0-9_-]+)\b', text)
+    # 4. Fallback tokens, but exclude parent IDs mentioned in "Resuming task <id>"
+    resuming_parents = set(re.findall(r'Resuming task\s+([0-9]{8}-[0-9]{6}-[a-zA-Z0-9_-]+)', text))
+    tokens = [t for t in re.findall(r'\b([0-9]{8}-[0-9]{6}-[a-zA-Z0-9_-]+)\b', text) if t not in resuming_parents]
     if tokens:
         return tokens[-1]
     return None

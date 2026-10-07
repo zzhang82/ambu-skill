@@ -254,12 +254,17 @@ def extract_telemetry(
     if direct_session_ids:
         sessions = query_opencode_sessions_by_ids(direct_session_ids, db_path=db_path)
     elif start_ms:
-        sessions = query_opencode_sessions(
+        candidate_sessions = query_opencode_sessions(
             start_ms=start_ms,
             end_ms=end_ms,
             directory=cwd,
             db_path=db_path,
         )
+        if len(candidate_sessions) == 1:
+            sessions = candidate_sessions
+        else:
+            # Ambiguous sessions in same workspace without explicit task binding: fail closed
+            sessions = []
 
     session_ids = [s["session_id"] for s in sessions]
     tools_used = query_tools_used_for_sessions(session_ids, db_path=db_path)
