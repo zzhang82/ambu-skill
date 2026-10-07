@@ -67,6 +67,21 @@ class AmbuRunnerTests(unittest.TestCase):
         ]
         self.assertEqual(cmd, expected)
 
+    def test_build_agentctl_cmd_resume(self):
+        args = argparse.Namespace(
+            subcommand="resume",
+            task_id="20261006-223151-oracle-55f2e2",
+            model="local/gemini-3.8-flash-high",
+            prompt="Continue the scan from previous turn",
+        )
+        cmd = ambu_runner.build_agentctl_cmd(args)
+        expected = [
+            "agentctl", "resume", "20261006-223151-oracle-55f2e2",
+            "--model", "local/gemini-3.8-flash-high",
+            "--prompt", "Continue the scan from previous turn",
+        ]
+        self.assertEqual(cmd, expected)
+
     def test_missing_task_id_fails_closed_without_unrelated_telemetry(self):
         # When agentctl fails before creating a task id, runner must fail closed and emit error
         with patch.object(sys, "argv", ["ambu_runner", "do", "broken goal", "--json-only"]), \

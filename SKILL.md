@@ -50,6 +50,10 @@ python3 scripts/ambu_runner.py do "<review_prompt>" \
 python3 scripts/ambu_runner.py iterate <agent> "<prompt>" \
   --workspace <workspace_name> \
   --check "<command>"
+
+# Resume an interrupted or quota-exhausted task seamlessly
+python3 scripts/ambu_runner.py resume <task_id> \
+  --model <alternative_model>
 ```
 
 #### What `ambu_runner.py` Does Automatically:
@@ -63,6 +67,20 @@ python3 scripts/ambu_runner.py iterate <agent> "<prompt>" \
   - `✅ Verification passed!`
 - On completion, parses SQLite telemetry and run metadata.
 - Prints a markdown summary and the standardized JSON schema.
+- If a task runs out of quota, hits rate limits, or is interrupted, automatically surfaces an **Actionable Recovery Box** with eligible fallback models and the one-line resume command.
+
+---
+
+### 2. Session Continuation Without Starting from Scratch
+
+When a model runs out of plan quota, returns 429, or hits 503, you do not need to restart the entire task from turn 0 (which would burn fresh tokens re-reading files).
+
+Ambu maps each `task_id` to its underlying OpenCode `session_id`:
+```bash
+# Resume seamlessly from the exact checkpoint using an alternative model:
+python3 scripts/ambu_runner.py resume <task_id> --model local/gemini-3.8-flash-high
+```
+Under the hood, this invokes `opencode run --session <session_id> --fork --model <new_model>`, carrying forward the entire prior turn's file reads, reasoning steps, and code changes into a new branch.
 
 ---
 

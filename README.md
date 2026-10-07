@@ -75,16 +75,19 @@ Terminal output:
 ============================================================
 ```
 
-### 2. Inspect Running Tasks
+### 2. Inspect Running Tasks & Resume from Failure
 
 ```bash
 # Snapshot of active and recent tasks
 python3 scripts/ambu_status.py
 
-# Detailed status of specific task
+# Detailed status of specific task (shows OpenCode session and PID)
 python3 scripts/ambu_status.py <task_id>
 
-# Cancel a stuck or running task
+# Resume an interrupted or quota-exhausted task seamlessly using an alternative model:
+python3 scripts/ambu_runner.py resume <task_id> --model local/gemini-3.8-flash-high
+
+# Cancel a stuck or running task cleanly
 python3 scripts/ambu_status.py <task_id> --cancel
 ```
 

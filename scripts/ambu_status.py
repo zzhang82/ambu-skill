@@ -95,11 +95,14 @@ def show_task_detail(task_id: str, json_mode: bool = False) -> int:
         lines = (run_dir / "stdout.log").read_text(encoding="utf-8").splitlines()
         stdout_tail = lines[-10:]
 
+    session_id = merged.get("session_id")
+
     payload = {
         "task_id": task_id,
         "status": merged.get("status", "unknown"),
         "agent": merged.get("agent"),
         "model": merged.get("model"),
+        "session_id": session_id,
         "mode": merged.get("mode", "run"),
         "workspace": merged.get("workspace"),
         "goal": merged.get("goal"),
@@ -120,10 +123,15 @@ def show_task_detail(task_id: str, json_mode: bool = False) -> int:
     print(f"\n{status_icon} Task: {task_id}")
     print(f"  Status:       {merged.get('status')} (PID: {pid or 'N/A'}, Alive: {alive})")
     print(f"  Agent:        {merged.get('agent')} (Model: {merged.get('model')})")
+    if session_id:
+        print(f"  Session:      {session_id}")
     print(f"  Workspace:    {merged.get('workspace') or 'default'}")
     print(f"  Elapsed:      {payload['elapsed']}")
     if merged.get("goal"):
         print(f"  Goal:         {merged['goal'][:100]}...")
+
+    if merged.get("status") in ("failed", "blocked") and session_id:
+        print(f"\n  💡 Resumable: python3 scripts/ambu_runner.py resume {task_id} --model <model>")
 
     if stdout_tail:
         print("\n  --- Recent Log Tail ---")

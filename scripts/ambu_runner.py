@@ -174,6 +174,12 @@ def build_agentctl_cmd(args: argparse.Namespace) -> list[str]:
             cmd.extend(["--workspace", args.workspace])
         if args.model:
             cmd.extend(["--model", args.model])
+    elif args.subcommand == "resume":
+        cmd.append(args.task_id)
+        if getattr(args, "model", None):
+            cmd.extend(["--model", args.model])
+        if getattr(args, "prompt", None):
+            cmd.extend(["--prompt", args.prompt])
 
     return cmd
 
@@ -214,6 +220,13 @@ def main() -> int:
     p_run.add_argument("--model", help="Model override")
     p_run.add_argument("--json-only", action="store_true", help="Print only raw JSON schema at end")
 
+    # resume command
+    p_res = sub.add_parser("resume", help="Resume an interrupted or failed task using its OpenCode session")
+    p_res.add_argument("task_id", help="Task ID to resume")
+    p_res.add_argument("--model", help="Alternative model to use for resumption (e.g. after quota exhaustion)")
+    p_res.add_argument("--prompt", help="Optional specific continuation instructions")
+    p_res.add_argument("--json-only", action="store_true", help="Print only raw JSON schema at end")
+
     args = parser.parse_args()
     json_only = bool(getattr(args, "json_only", False))
 
@@ -251,6 +264,18 @@ def main() -> int:
         print("\n" + "=" * 60)
         print(ambu_telemetry.format_markdown_report(telemetry))
         print("=" * 60 + "\n")
+
+        # Actionable Recovery Guidance if task failed or blocked
+        task_status = telemetry.get("status")
+        session_list = telemetry.get("sessions") or []
+        last_session = session_list[-1] if session_list else None
+        if (rc != 0 or task_status in ("failed", "blocked")) and last_session:
+            print("=" * 60)
+            print("💡 Actionable Recovery Options:")
+            print(f"Task `{task_id}` has an active OpenCode session (`{last_session}`).")
+            print("You can resume directly from this exact checkpoint without repeating prior work:")
+            print(f"  python3 scripts/ambu_runner.py resume {task_id} --model <alternative_model>")
+            print("=" * 60 + "\n")
 
         print("```json")
         print(json.dumps(telemetry, indent=2, sort_keys=True))
