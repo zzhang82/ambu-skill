@@ -1,0 +1,3 @@
+name: ambu
+display_name: Ambu Supervisor Skill
+description: Thin workflow adapter skill for Ambu (agentctl). Provides supervised execution, milestone progress streaming, one-shot status inspection, and token spend telemetry when sessions are attributable.
