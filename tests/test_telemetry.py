@@ -99,6 +99,7 @@ class AmbuTelemetryTests(unittest.TestCase):
             "status": "completed",
             "mode": "iterate",
             "agent": "oracle",
+            "session_id": "ses_mock_1",
             "cwd": "/test/dir",
             "started_at": "1970-01-01T00:16:39Z",  # ~999,000 ms
             "ended_at": "1970-01-01T00:16:51Z",    # ~1,011,000 ms

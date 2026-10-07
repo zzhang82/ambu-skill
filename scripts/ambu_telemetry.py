@@ -253,24 +253,9 @@ def extract_telemetry(
             if s and s not in direct_session_ids:
                 direct_session_ids.append(s)
 
-    # If it was an iterate task with zero rounds (check passed immediately), no worker attempts were made
-    is_zero_rounds = (meta.get("mode") == "iterate" and meta.get("rounds") == 0)
-
     try:
         if direct_session_ids:
             sessions = query_opencode_sessions_by_ids(direct_session_ids, db_path=db_path)
-        elif start_ms and not is_zero_rounds:
-            candidate_sessions = query_opencode_sessions(
-                start_ms=start_ms,
-                end_ms=end_ms,
-                directory=cwd,
-                db_path=db_path,
-            )
-            if len(candidate_sessions) == 1:
-                sessions = candidate_sessions
-            else:
-                # Ambiguous sessions in same workspace without explicit task binding: fail closed
-                sessions = []
     except Exception:
         sessions = []
 
