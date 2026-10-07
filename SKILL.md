@@ -71,16 +71,16 @@ python3 scripts/ambu_runner.py resume <task_id> \
 
 ---
 
-### 2. Session Continuation Without Starting from Scratch
+### 2. Session Continuation via OpenCode Session Fork
 
-When a model runs out of plan quota, returns 429, or hits 503, you do not need to restart the entire task from turn 0 (which would burn fresh tokens re-reading files).
+When a model runs out of plan quota, returns 429, or hits 503, you can continue the session using an alternative model:
 
 Ambu maps each `task_id` to its underlying OpenCode `session_id`:
 ```bash
-# Resume seamlessly from the exact checkpoint using an alternative model:
+# Continue the conversation session using an alternative model:
 python3 scripts/ambu_runner.py resume <task_id> --model local/gemini-3.8-flash-high
 ```
-Under the hood, this invokes `opencode run --session <session_id> --fork --model <new_model>`, carrying forward the entire prior turn's file reads, reasoning steps, and code changes into a new branch.
+Under the hood, this invokes `opencode run --session <session_id> --fork --model <new_model>`, continuing the conversation history in a new fork. Note that session fork branches conversation history, not underlying filesystem or git checkpoints.
 
 ---
 

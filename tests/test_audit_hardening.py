@@ -81,6 +81,54 @@ class SkillAuditHardeningTests(unittest.TestCase):
             state = Path(os.environ.get("RUNTIME_AGENTS_STATE_HOME") or (Path.home() / ".local" / "share" / "runtime-agents"))
             self.assertEqual(str(state), custom_state)
 
+    def test_resume_failure_before_banner_has_no_new_task_id(self):
+        old = "20261007-000100-coder-abcdef"
+        message = f"No OpenCode session recorded for task {old}. Cannot resume."
+        tid = ambu_runner.extract_task_id_from_stream(message)
+        self.assertIsNone(tid)
+
+    def test_zero_round_task_does_not_claim_other_session(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            db = tmp / "opencode.db"
+            make_test_db(db, [("other_task_session", "/workspace/A", 101000, 102000)])
+            runs_dir = tmp / "runs" / "zero-round-task"
+            runs_dir.mkdir(parents=True)
+            meta = {
+                "task_id": "zero-round-task",
+                "mode": "iterate",
+                "status": "completed",
+                "cwd": "/workspace/A",
+                "started_at": "1970-01-01T00:01:40Z",
+                "ended_at": "1970-01-01T00:01:42Z",
+                "rounds": 0,
+                "final_check_passed": True,
+            }
+            (runs_dir / "metadata.json").write_text(json.dumps(meta), encoding="utf-8")
+            got = ambu_telemetry.extract_telemetry("zero-round-task", state_home=tmp, db_path=db)
+            self.assertEqual(got["sessions"], [])
+
+    def test_optional_telemetry_schema_error_degrades(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            db = tmp / "opencode.db"
+            with sqlite3.connect(db) as conn:
+                conn.execute("CREATE TABLE session (id TEXT PRIMARY KEY, directory TEXT, time_created INTEGER)")
+            runs_dir = tmp / "runs" / "schema-error-task"
+            runs_dir.mkdir(parents=True)
+            meta = {
+                "task_id": "schema-error-task",
+                "mode": "run",
+                "status": "completed",
+                "session_id": "s",
+                "started_at": "1970-01-01T00:01:40Z",
+                "ended_at": "1970-01-01T00:01:42Z",
+            }
+            (runs_dir / "metadata.json").write_text(json.dumps(meta), encoding="utf-8")
+            got = ambu_telemetry.extract_telemetry("schema-error-task", state_home=tmp, db_path=db)
+            self.assertEqual(got["status"], "completed")
+            self.assertEqual(got["sessions"], [])
+
 
 if __name__ == "__main__":
     unittest.main()
