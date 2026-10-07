@@ -58,12 +58,16 @@ def get_task_run_dir(task_id: str) -> Path | None:
     return p if p.is_dir() else None
 
 
-def format_elapsed(start_iso: str | None) -> str:
+def format_elapsed(start_iso: str | None, end_iso: str | None = None) -> str:
     if not start_iso:
         return "unknown"
     try:
-        dt = datetime.fromisoformat(start_iso.replace("Z", "+00:00"))
-        secs = int(time.time() - dt.timestamp())
+        start_dt = datetime.fromisoformat(start_iso.replace("Z", "+00:00"))
+        if end_iso:
+            end_dt = datetime.fromisoformat(end_iso.replace("Z", "+00:00"))
+            secs = max(0, int(end_dt.timestamp() - start_dt.timestamp()))
+        else:
+            secs = max(0, int(time.time() - start_dt.timestamp()))
         mins, s = divmod(secs, 60)
         return f"{mins}m {s}s"
     except Exception:
@@ -103,7 +107,7 @@ def show_task_detail(task_id: str, json_mode: bool = False) -> int:
         "process_alive": alive,
         "started_at": merged.get("started_at"),
         "ended_at": merged.get("ended_at"),
-        "elapsed": format_elapsed(merged.get("started_at")),
+        "elapsed": format_elapsed(merged.get("started_at"), merged.get("ended_at")),
         "rounds": merged.get("rounds"),
         "stdout_tail": stdout_tail,
     }
@@ -133,26 +137,68 @@ def list_recent_tasks(limit: int = 5, json_mode: bool = False) -> int:
     tasks = list(latest_by_id(read_jsonl(STATE_HOME / "tasks.jsonl"), "task_id").values())
     queue = latest_by_id(read_jsonl(STATE_HOME / "queue.jsonl"), "queue_id")
 
-    # Check for active running queue items
-    running_items = [q for q in queue.values() if q.get("status") == "running"]
+    active_tasks: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+
+    # 1. Queue items currently running
+    for q in queue.values():
+        if q.get("status") == "running":
+            qid = q.get("queue_id")
+            tid = q.get("task_id")
+            if tid:
+                seen_ids.add(tid)
+            if qid:
+                seen_ids.add(qid)
+            pid = q.get("pid")
+            active_tasks.append({
+                "type": "queue",
+                "id": qid,
+                "task_id": tid,
+                "agent": q.get("agent"),
+                "pid": pid,
+                "alive": is_pid_alive(pid),
+                "started_at": q.get("started_at"),
+            })
+
+    # 2. Direct tasks currently running
+    for t in tasks:
+        tid = t.get("task_id")
+        if t.get("status") == "running" and tid not in seen_ids:
+            run_dir = get_task_run_dir(tid)
+            meta = {}
+            if run_dir and (run_dir / "metadata.json").is_file():
+                try:
+                    meta = json.loads((run_dir / "metadata.json").read_text(encoding="utf-8"))
+                except Exception:
+                    pass
+            pid = t.get("pid") or meta.get("pid")
+            active_tasks.append({
+                "type": "direct",
+                "id": tid,
+                "task_id": tid,
+                "agent": t.get("agent"),
+                "pid": pid,
+                "alive": is_pid_alive(pid),
+                "started_at": t.get("started_at"),
+            })
 
     recent = tasks[-limit:] if tasks else []
 
     if json_mode:
         payload = {
-            "running": running_items,
+            "running": active_tasks,
             "recent": recent,
         }
         print(json.dumps(payload, indent=2))
         return 0
 
     print("\n⚡ [Ambu Live Status Overview]")
-    if running_items:
-        print(f"\n🚀 Active Running Tasks ({len(running_items)}):")
-        for item in running_items:
+    if active_tasks:
+        print(f"\n🚀 Active Running Tasks ({len(active_tasks)}):")
+        for item in active_tasks:
             pid = item.get("pid")
-            alive = is_pid_alive(pid)
-            print(f"  - Queue ID: {item.get('queue_id')} | Task ID: {item.get('task_id')}")
+            alive = item.get("alive")
+            print(f"  - [{item.get('type')}] Task: {item.get('task_id') or item.get('id')}")
             print(f"    Agent: {item.get('agent')} | PID: {pid} (Alive: {alive}) | Elapsed: {format_elapsed(item.get('started_at'))}")
     else:
         print("\n💤 No currently running worker tasks.")
@@ -169,7 +215,15 @@ def list_recent_tasks(limit: int = 5, json_mode: bool = False) -> int:
 def cancel_task(task_id: str) -> int:
     tasks = latest_by_id(read_jsonl(STATE_HOME / "tasks.jsonl"), "task_id")
     task = tasks.get(task_id) or {}
-    pid = task.get("pid")
+    run_dir = get_task_run_dir(task_id)
+    meta = {}
+    if run_dir and (run_dir / "metadata.json").is_file():
+        try:
+            meta = json.loads((run_dir / "metadata.json").read_text(encoding="utf-8"))
+        except Exception:
+            pass
+
+    pid = task.get("pid") or meta.get("pid")
 
     if pid and is_pid_alive(pid):
         try:

@@ -257,17 +257,27 @@ def extract_telemetry(
     if isinstance(loop_count, list):
         loop_count = len(loop_count)
 
+    mode = meta.get("mode", "run")
+    has_verification = mode == "iterate" or bool(meta.get("check")) or "final_check_passed" in meta
+    if has_verification:
+        verification_state = "passed" if meta.get("final_check_passed", meta.get("status") == "completed") else "failed"
+        final_check_passed = (verification_state == "passed")
+    else:
+        verification_state = "not_run"
+        final_check_passed = None
+
     return {
         "task_id": task_id,
         "status": meta.get("status", "unknown"),
-        "mode": meta.get("mode", "run"),
+        "mode": mode,
         "agent": meta.get("agent"),
         "goal": meta.get("goal"),
         "workspace": meta.get("workspace"),
         "cwd": cwd,
         "duration_seconds": duration,
         "loop_count": loop_count,
-        "final_check_passed": meta.get("final_check_passed", meta.get("status") == "completed"),
+        "verification_state": verification_state,
+        "final_check_passed": final_check_passed,
         "models": list(by_model.values()),
         "total_tokens": total_tokens,
         "tools_used": tools_used,
@@ -283,9 +293,17 @@ def format_markdown_report(telemetry: dict[str, Any]) -> str:
     status = telemetry.get("status", "unknown")
     icon = "✅" if status == "completed" else "⚠️" if status == "blocked" else "❌"
 
+    verification_state = telemetry.get("verification_state", "not_run")
+    if verification_state == "passed":
+        verif_str = "Verification: Passed"
+    elif verification_state == "failed":
+        verif_str = "Verification: Failed"
+    else:
+        verif_str = "Direct Execution (No Check)"
+
     lines = [
         f"### {icon} Task Execution Report: `{telemetry.get('task_id')}`",
-        f"- **Status**: `{status}` ({'Check Passed' if telemetry.get('final_check_passed') else 'Check Failed / Incomplete'})",
+        f"- **Status**: `{status}` ({verif_str})",
         f"- **Duration**: `{telemetry.get('duration_seconds')}s` | **Loops / Rounds**: `{telemetry.get('loop_count')}`",
     ]
     if telemetry.get("workspace"):

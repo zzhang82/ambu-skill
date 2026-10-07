@@ -113,6 +113,7 @@ class AmbuTelemetryTests(unittest.TestCase):
         self.assertEqual(telemetry["task_id"], "test-task-123")
         self.assertEqual(telemetry["status"], "completed")
         self.assertEqual(telemetry["loop_count"], 2)
+        self.assertEqual(telemetry["verification_state"], "passed")
         self.assertTrue(telemetry["final_check_passed"])
         self.assertEqual(len(telemetry["models"]), 1)
         self.assertEqual(telemetry["models"][0]["model"], "local/gpt-6-astra")
@@ -122,6 +123,28 @@ class AmbuTelemetryTests(unittest.TestCase):
         self.assertEqual(telemetry["total_tokens"]["cache_read"], 5000)
         self.assertEqual(telemetry["total_tokens"]["total"], 6350)
         self.assertEqual(telemetry["tools_used"]["read"], 2)
+
+    def test_direct_run_without_check_reports_verification_not_run(self):
+        runs_dir = self.tmp / "runs" / "test-run-456"
+        runs_dir.mkdir(parents=True)
+        meta = {
+            "task_id": "test-run-456",
+            "status": "completed",
+            "mode": "run",
+            "agent": "oracle",
+            "cwd": "/test/dir",
+            "started_at": "1970-01-01T00:16:39Z",
+            "ended_at": "1970-01-01T00:16:51Z",
+        }
+        (runs_dir / "metadata.json").write_text(json.dumps(meta), encoding="utf-8")
+
+        telemetry = ambu_telemetry.extract_telemetry(
+            "test-run-456", state_home=self.tmp, db_path=self.db_path
+        )
+        self.assertEqual(telemetry["verification_state"], "not_run")
+        self.assertIsNone(telemetry["final_check_passed"])
+        report = ambu_telemetry.format_markdown_report(telemetry)
+        self.assertIn("Direct Execution (No Check)", report)
 
 
 if __name__ == "__main__":

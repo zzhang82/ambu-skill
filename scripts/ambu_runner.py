@@ -9,6 +9,7 @@ and emits an organized summary with exact token spend by model and loop counts.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import signal
@@ -31,9 +32,10 @@ ANSI_RED = "\033[31m"
 ANSI_BOLD = "\033[1m"
 
 
-def log_milestone(prefix: str, message: str, color: str = ANSI_CYAN) -> None:
+def log_milestone(prefix: str, message: str, color: str = ANSI_CYAN, json_only: bool = False) -> None:
     timestamp = time.strftime("%H:%M:%S")
-    print(f"{color}{ANSI_BOLD}[Ambu {timestamp}]{ANSI_RESET} {message}", flush=True)
+    target_stream = sys.stderr if json_only else sys.stdout
+    print(f"{color}{ANSI_BOLD}[Ambu {timestamp}]{ANSI_RESET} {message}", file=target_stream, flush=True)
 
 
 def parse_milestone(line: str) -> str | None:
@@ -42,6 +44,7 @@ def parse_milestone(line: str) -> str | None:
     if not clean:
         return None
 
+    clean_lower = clean.lower()
     if clean.startswith("[Round 0] Evaluating initial check:"):
         cmd = clean.split(":", 1)[1].strip()
         return f"🔍 Evaluating initial check: `{cmd}`"
@@ -63,7 +66,7 @@ def parse_milestone(line: str) -> str | None:
         return f"🧪 Agent finished iteration. Running verification check..."
     if "[ANTI-LOOP HALT]" in clean:
         return f"🛑 Anti-loop halt triggered: {clean}"
-    if "Check passed!" in clean or "succeeded" in clean.lower() and "check" in clean.lower():
+    if "check passed" in clean_lower or "verification passed" in clean_lower:
         return f"✅ Verification passed!"
     return None
 
@@ -79,7 +82,7 @@ def extract_task_id_from_stream(text: str) -> str | None:
     return None
 
 
-def run_supervised(cmd: list[str]) -> tuple[int, str, str | None]:
+def run_supervised(cmd: list[str], json_only: bool = False) -> tuple[int, str, str | None]:
     """Execute command in monitored subprocess group."""
     popen_kwargs: dict[str, Any] = {
         "text": True,
@@ -107,7 +110,7 @@ def run_supervised(cmd: list[str]) -> tuple[int, str, str | None]:
                             task_id = found_id
                     milestone = parse_milestone(line)
                     if milestone:
-                        log_milestone("milestone", milestone)
+                        log_milestone("milestone", milestone, json_only=json_only)
         except Exception:
             pass
 
@@ -115,7 +118,7 @@ def run_supervised(cmd: list[str]) -> tuple[int, str, str | None]:
     t.start()
 
     def handle_signal(sig, _frame):
-        log_milestone("signal", f"Received termination signal ({sig}). Cancelling Ambu task group...", ANSI_YELLOW)
+        log_milestone("signal", f"Received termination signal ({sig}). Cancelling Ambu task group...", ANSI_YELLOW, json_only=json_only)
         if os.name == "posix":
             try:
                 os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
@@ -212,38 +215,49 @@ def main() -> int:
     p_run.add_argument("--json-only", action="store_true", help="Print only raw JSON schema at end")
 
     args = parser.parse_args()
+    json_only = bool(getattr(args, "json_only", False))
 
     agentctl_cmd = build_agentctl_cmd(args)
-    log_milestone("start", f"Launching: {' '.join(agentctl_cmd)}", ANSI_GREEN)
+    log_milestone("start", f"Launching: {' '.join(agentctl_cmd)}", ANSI_GREEN, json_only=json_only)
 
-    rc, stdout, task_id = run_supervised(agentctl_cmd)
+    rc, stdout, task_id = run_supervised(agentctl_cmd, json_only=json_only)
 
     if not task_id:
-        # Fallback to checking latest task
-        tasks_file = Path.home() / ".local" / "share" / "runtime-agents" / "tasks.jsonl"
-        if tasks_file.is_file():
-            try:
-                for line in tasks_file.read_text(encoding="utf-8").splitlines():
-                    if line.strip():
-                        data = json.loads(line)
-                        if data.get("task_id"):
-                            task_id = data["task_id"]
-            except Exception:
-                pass
+        if json_only:
+            err_payload = {
+                "error": "task_launch_failed",
+                "returncode": rc,
+                "message": "Task execution finished without producing an authoritative task ID.",
+                "output": stdout.strip(),
+            }
+            print(json.dumps(err_payload, indent=2, sort_keys=True))
+        else:
+            log_milestone("error", "Task execution failed before minting a task ID.", ANSI_RED, json_only=False)
+            if stdout.strip():
+                print(stdout.strip(), file=sys.stderr)
+        return rc if rc != 0 else 1
 
-    if task_id:
-        telemetry = ambu_telemetry.extract_telemetry(task_id)
-        if not getattr(args, "json_only", False):
-            print("\n" + "=" * 60)
-            print(ambu_telemetry.format_markdown_report(telemetry))
-            print("=" * 60 + "\n")
+    telemetry = ambu_telemetry.extract_telemetry(task_id)
+    if not json_only:
+        run_dir = ambu_telemetry.get_task_run_dir(task_id)
+        if run_dir and (run_dir / "stdout.log").is_file():
+            agent_output = (run_dir / "stdout.log").read_text(encoding="utf-8").strip()
+            if agent_output:
+                print("\n" + "=" * 60)
+                print(f"📄 Agent Response Output ({telemetry.get('agent', 'agent')}):")
+                print("=" * 60)
+                print(agent_output)
 
-        print("\n```json")
+        print("\n" + "=" * 60)
+        print(ambu_telemetry.format_markdown_report(telemetry))
+        print("=" * 60 + "\n")
+
+        print("```json")
         print(json.dumps(telemetry, indent=2, sort_keys=True))
         print("```\n")
     else:
-        log_milestone("warn", "Could not resolve task_id for telemetry extraction.", ANSI_YELLOW)
-        print(stdout)
+        # In json_only mode, print pure valid JSON directly to stdout
+        print(json.dumps(telemetry, indent=2, sort_keys=True))
 
     return rc
 

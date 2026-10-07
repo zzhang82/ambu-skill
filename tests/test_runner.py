@@ -1,6 +1,9 @@
 import argparse
+import io
+import json
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
@@ -14,6 +17,9 @@ class AmbuRunnerTests(unittest.TestCase):
         self.assertIn("Starting Round 1/3", ambu_runner.parse_milestone("[Round 1/3] Preparing agent dispatch..."))
         self.assertIn("Attempt 1", ambu_runner.parse_milestone("[oracle] Attempt 1/4: Running on model 'local/gpt-6-astra'..."))
         self.assertIn("Verification passed", ambu_runner.parse_milestone("[Round 1] Check passed!"))
+        # Verify variant wording
+        self.assertIn("Verification passed", ambu_runner.parse_milestone("[Round 1] Verification passed! Goal achieved."))
+        self.assertIn("Verification passed", ambu_runner.parse_milestone("[Round 0] Check passed immediately. Task completed."))
 
     def test_extract_task_id(self):
         text = '{"task_id": "20261006-222134-iterate-oracle-e33943", "status": "blocked"}'
@@ -60,6 +66,38 @@ class AmbuRunnerTests(unittest.TestCase):
             "--max-rounds", "5",
         ]
         self.assertEqual(cmd, expected)
+
+    def test_missing_task_id_fails_closed_without_unrelated_telemetry(self):
+        # When agentctl fails before creating a task id, runner must fail closed and emit error
+        with patch.object(sys, "argv", ["ambu_runner", "do", "broken goal", "--json-only"]), \
+             patch.object(ambu_runner, "run_supervised", return_value=(2, "Invalid workspace: nonexistent", None)), \
+             patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+            rc = ambu_runner.main()
+            self.assertEqual(rc, 2)
+            output = mock_stdout.getvalue()
+            # Output must be pure valid JSON
+            payload = json.loads(output)
+            self.assertEqual(payload["error"], "task_launch_failed")
+            self.assertEqual(payload["returncode"], 2)
+            self.assertIn("nonexistent", payload["output"])
+
+    def test_json_only_mode_emits_valid_json_on_success(self):
+        telemetry = {
+            "task_id": "20261006-111111-oracle-aabbcc",
+            "status": "completed",
+            "duration_seconds": 12.3,
+            "total_tokens": {"total": 5000},
+        }
+        with patch.object(sys, "argv", ["ambu_runner", "do", "inspect", "--json-only"]), \
+             patch.object(ambu_runner, "run_supervised", return_value=(0, 'task_id: 20261006-111111-oracle-aabbcc', "20261006-111111-oracle-aabbcc")), \
+             patch.object(ambu_runner.ambu_telemetry, "extract_telemetry", return_value=telemetry), \
+             patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+            rc = ambu_runner.main()
+            self.assertEqual(rc, 0)
+            output = mock_stdout.getvalue()
+            parsed = json.loads(output)
+            self.assertEqual(parsed["task_id"], "20261006-111111-oracle-aabbcc")
+            self.assertEqual(parsed["status"], "completed")
 
 
 if __name__ == "__main__":
